@@ -11,6 +11,7 @@ An iPhone web app that tells you what speed to hold to catch the next green ligh
 - Mount the phone. Tap **Start drive** once before you move, then don't touch it. Michigan law allows a single touch while driving.
 - Keep the app open with the screen on. It holds the screen awake, but iPhone pauses location for web apps in the background.
 - Drive normally. Every light you **stop at** teaches the app when it turns green. Lights you pass on green help confirm the timing.
+- The map in the middle shows you (blue) and the lights ahead: grey = learning, amber = guess, green = likely/sure. Map tiles © OpenStreetMap contributors.
 - Labels: **Learning** (no data yet), **Guess** (1–2 stops), **Likely** (3+ stops), **Sure** (about 6+ consistent stops in the same time-of-day plan).
 - Take the same route at similar times of day. Lights often switch timing plans for morning rush, midday, evening rush and weekends, and the app learns each one separately.
 
@@ -26,6 +27,9 @@ An iPhone web app that tells you what speed to hold to catch the next green ligh
 
 ## Your data
 Everything stays on your phone (browser storage). Use **Back up data** regularly; clearing Safari's website data erases what it learned.
+
+## Updating
+The version number is at the bottom of the home screen and next to the app name while driving. After uploading new files, close the app fully (swipe it away) and reopen it.
 
 ## Files
 `index.html` (screens) · `app.js` (GPS, map data, voice) · `core.js` (timing learner and speed advisor) · `sw.js` (offline cache) · `manifest.webmanifest`, icons.

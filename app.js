@@ -1,5 +1,6 @@
 // Always Green — iPhone web app
-import * as core from "./core.js";
+import * as core from "./core.js?v=3";
+export const APP_VERSION = "3";
 const { MPH } = core;
 const $ = s => document.querySelector(s);
 
@@ -30,6 +31,7 @@ function refreshHome() {
   $("#setVoice").checked = settings.voice;
   $("#setConf").checked = settings.onlyConfident;
   $("#setLimit").value = settings.unknownLimit;
+  $("#ver").textContent = "Version " + APP_VERSION;
 }
 $("#accept").onclick = () => { settings.accepted = true; saveSettings(); refreshHome(); show("home"); };
 $("#setVoice").onchange = e => { settings.voice = e.target.checked; saveSettings(); };
@@ -112,19 +114,16 @@ function newSession(demo) {
 async function startDrive(demo = false) {
   S = newSession(demo);
   show("drive");
-  $("#driveBrand").textContent = demo ? "Demo drive" : "Always Green";
+  $("#driveBrand").textContent = (demo ? "Demo drive" : "Always Green") + " · v" + APP_VERSION;
   $("#mute").textContent = "Mute";
   say(demo ? "Demo drive started." : "Always Green started.", true);   // unlocks speech on iPhone
   keepAwake();
+  initMap();
   render({ mode: "WAIT" });
   if (demo) { startDemo(); }
   else {
     if (!("geolocation" in navigator)) { msg("This browser has no GPS access."); return; }
-    S.watchId = navigator.geolocation.watchPosition(onPosition, e => {
-        if (!S) return;
-        S.geoError = e.code;                                   // 1 = blocked, 2 = unavailable, 3 = slow
-        if (!S.pos) render({ mode: "WAIT" });
-      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+    startGeo();
   }
   S.timer = setInterval(tick, 1000);
 }
@@ -132,6 +131,18 @@ $("#start").onclick = () => startDrive(false);
 $("#demo").onclick = () => startDrive(true);
 $("#mute").onclick = () => { if (!S) return; S.muted = !S.muted; $("#mute").textContent = S.muted ? "Unmute" : "Mute"; if (S.muted) try { speechSynthesis.cancel(); } catch {} };
 $("#stop").onclick = endDrive;
+
+// Ask for location two ways: a quick rough fix (so the screen updates fast), and a precise
+// continuous watch. If nothing arrives, start over every 12 s (iPhone sometimes needs this
+// right after you tap Allow).
+function startGeo() {
+  if (!S) return;
+  if (S.watchId !== undefined) navigator.geolocation.clearWatch(S.watchId);
+  S.geoStart = Date.now();
+  const onErr = e => { if (!S) return; S.geoError = e.code; if (!S.pos) render({ mode: "WAIT" }); };
+  try { navigator.geolocation.getCurrentPosition(onPosition, onErr, { enableHighAccuracy: false, maximumAge: 60000, timeout: 20000 }); } catch {}
+  S.watchId = navigator.geolocation.watchPosition(onPosition, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+}
 
 function onPosition(p) {
   const c = p.coords;
@@ -154,6 +165,7 @@ function onFix(f) {
   if (!S.demo) { ensureSignals(pos); updateLimit(); }
   if (!S.track.length || f.t - S.track[S.track.length - 1][0] >= 1000)
     S.track.push([f.t, +pos.lat.toFixed(5), +pos.lon.toFixed(5), +S.v.toFixed(1)]);
+  updateMap();
   if (!S.firstFixShown) { S.firstFixShown = true; S.geoError = null; tick(); }
   if (S.h === null) return;
   trackLight(f.t);
@@ -201,10 +213,52 @@ function fitFor(key) {
   return S.fitCache[key];
 }
 
+// ---------- live map (OpenStreetMap tiles via Leaflet) ----------
+let MAP = null;
+function initMap() {
+  const el = $("#map");
+  if (!window.L) { el.innerHTML = '<div class="nomap">Map couldn\'t load (no connection?). Advice still works.</div>'; return; }
+  if (MAP) { MAP.map.remove(); MAP = null; }
+  el.innerHTML = "";
+  const map = L.map(el, { zoomControl: false, attributionControl: true, dragging: true, tap: false }).setView([42.33, -83.05], 15);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
+  const car = L.marker([0, 0], { icon: L.divIcon({ className: "", html: '<div class="carIcon"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false });
+  MAP = { map, car, carOn: false, lights: L.layerGroup().addTo(map), lastLights: 0, follow: true };
+  map.on("dragstart", () => { MAP.follow = false; clearTimeout(MAP.ft); MAP.ft = setTimeout(() => { if (MAP) MAP.follow = true; }, 8000); });
+  setTimeout(() => map.invalidateSize(), 50);
+}
+const LIGHT_COLORS = { none: "#8A94A3", Guess: "#FFB547", Likely: "#7BE0A6", Sure: "#3DDC84" };
+function updateMap() {
+  if (!MAP || !S || !S.pos) return;
+  const ll = [S.pos.lat, S.pos.lon];
+  if (!MAP.carOn) { MAP.car.addTo(MAP.map); MAP.carOn = true; MAP.map.setView(ll, 15, { animate: false }); }
+  MAP.car.setLatLng(ll);
+  if (MAP.follow) {                                        // keep your dot in the lower part, below the advice panel
+    const m = MAP.map, h = m.getSize().y;
+    const target = m.containerPointToLatLng(m.latLngToContainerPoint(ll).subtract([0, h * 0.22]));
+    m.panTo(target, { animate: true, duration: 0.5 });
+  }
+  if (Date.now() - MAP.lastLights > 3000) {                 // redraw nearby lights every few seconds
+    MAP.lastLights = Date.now();
+    MAP.lights.clearLayers();
+    const sector = S.h === null ? null : core.sectorOf(S.h);
+    const nextId = S.tracking ? S.tracking.c.id : null;
+    for (const c of S.clusters) {
+      if (core.dist(S.pos, c) > 2500) continue;
+      const plan = sector === null ? null : fitFor(c.id + ":" + sector);
+      const col = LIGHT_COLORS[plan ? plan.conf : "none"];
+      L.circleMarker([c.lat, c.lon], { radius: c.id === nextId ? 10 : 7, color: "#0B0F14", weight: 2, fillColor: col, fillOpacity: 1, interactive: false }).addTo(MAP.lights);
+    }
+  }
+}
+
 // ---------- advice, once a second ----------
 function tick() {
   if (!S) return;
-  if (!S.pos) return render({ mode: "WAIT" });
+  if (!S.pos) {
+    if (!S.demo && Date.now() - (S.geoStart || 0) > 12000 && (S.geoRetries || 0) < 10) { S.geoRetries = (S.geoRetries || 0) + 1; startGeo(); }
+    return render({ mode: "WAIT" });
+  }
   if (S.acc > 40) return render({ mode: "GPS" });
   if (S.h === null) return render({ mode: "READY" });       // have a fix, but not moving yet
   const T = S.tracking;
@@ -242,6 +296,7 @@ function render(a) {
   $("#nextDist").textContent = a.dist !== undefined ? fmtDist(a.dist) : (S.tracking ? fmtDist(Math.max(0, S.tracking.along - 12)) : "—");
   $("#conf").textContent = a.conf || (a.plan && a.plan.conf) || "—";
   big.classList.add("text"); unit.textContent = ""; sub.textContent = "";
+  $("#adv").classList.toggle("compact", !["HOLD", "EASE", "STOPPED"].includes(a.mode));
   switch (a.mode) {
     case "WAIT":
       if (S.geoError === 1) {
@@ -251,19 +306,20 @@ function render(a) {
         setBand("Location unavailable", "#FFB547", "rgba(255,181,71,.16)"); big.textContent = "No GPS";
         sub.textContent = "Check that Location Services is on, and that you opened the https:// link.";
       } else {
-        setBand("Finding GPS…", "#6B7684", "#151B23"); big.textContent = "—";
-        sub.textContent = S.geoError === 3 ? "Still waiting for a fix. Try near a window or outside." : "If Safari asks, tap Allow.";
+        setBand("Finding GPS…", "#6B7684", "#151B23"); big.textContent = "Looking for your location";
+        const waited = Math.round((Date.now() - S.startMs) / 1000);
+        sub.textContent = (S.geoError === 3 ? "Still waiting for a fix. Try near a window or outside." : "If Safari asks, tap Allow.") + ` (${waited} s, try ${(S.geoRetries || 0) + 1})`;
       }
       break;
     case "GPS":
-      setBand("Weak GPS signal", "#6B7684", "#151B23"); big.textContent = "—";
+      setBand("Weak GPS signal", "#6B7684", "#151B23"); big.textContent = "Location is rough";
       sub.textContent = `Accuracy ±${Math.round(S.acc)} m. ` + (S.acc > 500 ? "Turn on Precise Location for Safari Websites in Settings." : "No advice until GPS improves.");
       break;
     case "READY":
       setBand("GPS ready", "#3DDC84", "rgba(61,220,132,.16)"); big.textContent = "Start driving";
       sub.textContent = `Accuracy ±${Math.round(S.acc)} m · ${S.clusters.length} lights loaded nearby. Advice starts once you're moving.`;
       break;
-    case "NONE": setBand("No lights ahead", "#6B7684", "#151B23"); big.textContent = "—"; sub.textContent = "Drive normally"; break;
+    case "NONE": setBand("No lights ahead", "#6B7684", "#151B23"); big.textContent = "Drive normally"; sub.textContent = "No traffic lights mapped on the road ahead"; break;
     case "LEARNING":
       setBand("Learning this light", "#6B7684", "#151B23"); big.textContent = "Drive normally";
       sub.textContent = "Each pass teaches the app its timing";
@@ -304,6 +360,7 @@ function endDrive() {
   if (S.watchId !== undefined) navigator.geolocation.clearWatch(S.watchId);
   clearInterval(S.timer); if (S.demoTimer) clearInterval(S.demoTimer);
   try { wake && wake.release(); } catch {}
+  if (MAP) { MAP.map.remove(); MAP = null; }
   try { speechSynthesis.cancel(); } catch {}
   const st = S.stats, mins = (now() - S.startMs) / 60000;
   if (!S.demo && S.track.length > 30) {
