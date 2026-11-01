@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Always Green">
+<meta name="theme-color" content="#0B0F14">
+<title>Always Green</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root{--bg:#0B0F14;--card:#151B23;--line:#253040;--ink:#F2F5F7;--muted:#A3ADBA;--green:#3DDC84;--amber:#FFB547;--blue:#4FC3F7}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif}
+  body{min-height:100dvh;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  .screen{display:none;min-height:100dvh;padding:20px 18px 24px;flex-direction:column;gap:14px;max-width:520px;margin:0 auto}
+  .screen.on{display:flex}
+  h1{font-size:28px;margin:6px 0 0;letter-spacing:-0.01em}
+  h2{font-size:17px;margin:0 0 8px}
+  p{margin:0;line-height:1.45;color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+  button,.btn{font:inherit;font-size:18px;font-weight:600;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);min-height:56px;padding:0 18px;width:100%;cursor:pointer}
+  button.go{background:var(--green);border-color:var(--green);color:#06210F;font-size:22px;min-height:72px}
+  button.small{min-height:44px;font-size:15px;font-weight:500}
+  button:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1}
+  ul.safe{margin:8px 0 0;padding-left:20px;color:var(--ink);line-height:1.5}
+  ul.safe li{margin:6px 0}
+  .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+  .stat b{display:block;font-size:26px;font-variant-numeric:tabular-nums}
+  .stat span{color:var(--muted);font-size:13px}
+  label.set{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:16px}
+  label.set:last-child{border-bottom:0}
+  label.set small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+  input[type=checkbox]{width:26px;height:26px;accent-color:var(--green)}
+  select{font:inherit;font-size:15px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px}
+  /* drive screen */
+  #drive{gap:12px;padding-top:14px}
+  .top{display:flex;justify-content:space-between;align-items:center;min-height:52px}
+  .brand{font-weight:600;color:var(--muted);font-size:16px}
+  .sign{width:46px;height:54px;background:#fff;color:#0B0F14;border-radius:6px;outline:2px solid #fff;border:2px solid #0B0F14;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .sign small{font-size:7px;font-weight:700;line-height:1.1;text-align:center}
+  .sign b{font-size:22px;line-height:1}
+  .band{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:16px;border:2px solid #6B7684;background:var(--card);font-size:20px;font-weight:600}
+  .bigwrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:250px;text-align:center}
+  .big{font-size:150px;font-weight:700;line-height:.95;letter-spacing:-0.03em;font-variant-numeric:tabular-nums}
+  .big.text{font-size:64px;line-height:1.05}
+  .unit{font-size:22px;color:var(--muted);margin-top:4px}
+  .sub{font-size:17px;color:var(--muted);margin-top:10px;min-height:22px}
+  .info{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .info div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+  .info span{display:block;color:var(--muted);font-size:13px}
+  .info b{font-size:20px;font-variant-numeric:tabular-nums}
+  .dots{display:flex;gap:3px;align-items:flex-end;height:20px}
+  .dots i{width:7px;border-radius:2px;background:var(--line)}
+  .toast{color:var(--muted);font-size:13px;text-align:center;min-height:18px}
+</style>
+</head>
+<body>
+
+<section class="screen" id="safety">
+  <h1>Always Green</h1>
+  <p>Speed advice for catching green lights, learned from your own drives.</p>
+  <div class="card">
+    <h2>Before your first drive</h2>
+    <ul class="safe">
+      <li><b>Advice only.</b> Always obey the actual light, signs and traffic around you. The app can be wrong, especially early on.</li>
+      <li><b>It learns as you drive.</b> New lights say "Learning". Early advice is labeled <b>Guess</b>, then <b>Likely</b>, then <b>Sure</b>.</li>
+      <li><b>It never advises speeding.</b> Where the speed limit isn't in the map data, it only ever suggests slowing down.</li>
+      <li><b>Hands off the phone.</b> Mount it, tap Start once before you move, and listen. Michigan law allows only a single touch while driving.</li>
+      <li>Keep the app open with the screen on while driving. iPhone pauses location for web apps in the background.</li>
+    </ul>
+  </div>
+  <button class="go" id="accept">I understand</button>
+</section>
+
+<section class="screen" id="home">
+  <h1>Always Green</h1>
+  <p id="homeIntro">Mount your phone, tap Start, then drive normally. Every light you stop at or pass teaches the app its timing.</p>
+  <button class="go" id="start">Start drive</button>
+  <div class="stats">
+    <div class="stat"><b id="stLights">0</b><span>light approaches known</span></div>
+    <div class="stat"><b id="stSure">0</b><span>timed "Sure"</span></div>
+    <div class="stat"><b id="stDrives">0</b><span>drives recorded</span></div>
+    <div class="stat"><b id="stAcc">—</b><span>typical prediction error</span></div>
+  </div>
+  <div class="card">
+    <h2>Settings</h2>
+    <label class="set"><span>Voice guidance<small>Speaks only when the advice changes</small></span><input type="checkbox" id="setVoice"></label>
+    <label class="set"><span>Only speak when confident<small>Off: you also hear early guesses</small></span><input type="checkbox" id="setConf"></label>
+    <label class="set"><span>Speed limit not in map data<small>What the app may advise</small></span>
+      <select id="setLimit">
+        <option value="slowOnly">Only slowing down</option>
+        <option value="25">Assume 25 mph</option>
+        <option value="30">Assume 30 mph</option>
+        <option value="35">Assume 35 mph</option>
+        <option value="40">Assume 40 mph</option>
+        <option value="45">Assume 45 mph</option>
+      </select></label>
+  </div>
+  <div class="row">
+    <button class="small" id="demo">Try a demo drive</button>
+    <button class="small" id="export">Back up data</button>
+  </div>
+  <div class="row">
+    <label class="btn small" style="display:flex;align-items:center;justify-content:center;min-height:44px;font-size:15px;font-weight:500">Restore backup<input type="file" id="import" accept="application/json,.json" hidden></label>
+    <button class="small" id="wipe">Erase all data</button>
+  </div>
+  <p id="homeMsg" class="toast"></p>
+</section>
+
+<section class="screen" id="drive">
+  <div class="top">
+    <span class="brand" id="driveBrand">Always Green</span>
+    <div class="sign" aria-label="Speed limit"><small>SPEED<br>LIMIT</small><b id="limitVal">?</b></div>
+  </div>
+  <div class="band" id="band" role="status">Starting…</div>
+  <div class="bigwrap">
+    <div class="big text" id="big">—</div>
+    <div class="unit" id="unit"></div>
+    <div class="sub" id="sub"></div>
+  </div>
+  <div class="info">
+    <div><span>Next light</span><b id="nextDist">—</b></div>
+    <div><span>Confidence</span><b id="conf">—</b></div>
+    <div><span>Speed</span><b id="speedNow">—</b></div>
+  </div>
+  <div class="toast" id="driveMsg"></div>
+  <div class="row">
+    <button class="small" id="mute">Mute</button>
+    <button id="stop" style="flex:2">End drive</button>
+  </div>
+</section>
+
+<section class="screen" id="summary">
+  <h1>Drive saved</h1>
+  <div class="card" id="sumBody"></div>
+  <button class="go" id="sumOk">Done</button>
+</section>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
