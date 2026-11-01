@@ -1,6 +1,6 @@
 // Caches the app itself so it opens instantly and survives weak signal.
 // Map data requests (OpenStreetMap) always go to the network.
-const CACHE = "always-green-v1";
+const CACHE = "always-green-v2";
 const FILES = ["./", "index.html", "app.js", "core.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });

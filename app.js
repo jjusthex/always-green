@@ -120,8 +120,11 @@ async function startDrive(demo = false) {
   if (demo) { startDemo(); }
   else {
     if (!("geolocation" in navigator)) { msg("This browser has no GPS access."); return; }
-    S.watchId = navigator.geolocation.watchPosition(onPosition, e => msg(e.code === 1 ? "Location is off. Allow it in Settings › Privacy › Location Services › Safari Websites." : "Waiting for GPS…"),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+    S.watchId = navigator.geolocation.watchPosition(onPosition, e => {
+        if (!S) return;
+        S.geoError = e.code;                                   // 1 = blocked, 2 = unavailable, 3 = slow
+        if (!S.pos) render({ mode: "WAIT" });
+      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
   }
   S.timer = setInterval(tick, 1000);
 }
@@ -151,6 +154,7 @@ function onFix(f) {
   if (!S.demo) { ensureSignals(pos); updateLimit(); }
   if (!S.track.length || f.t - S.track[S.track.length - 1][0] >= 1000)
     S.track.push([f.t, +pos.lat.toFixed(5), +pos.lon.toFixed(5), +S.v.toFixed(1)]);
+  if (!S.firstFixShown) { S.firstFixShown = true; S.geoError = null; tick(); }
   if (S.h === null) return;
   trackLight(f.t);
 }
@@ -199,8 +203,10 @@ function fitFor(key) {
 
 // ---------- advice, once a second ----------
 function tick() {
-  if (!S || !S.pos || S.h === null) return;
+  if (!S) return;
+  if (!S.pos) return render({ mode: "WAIT" });
   if (S.acc > 40) return render({ mode: "GPS" });
+  if (S.h === null) return render({ mode: "READY" });       // have a fix, but not moving yet
   const T = S.tracking;
   if (T && S.v < 0.8 && T.along - 12 < 40) {                              // waiting at a red
     const plan = fitFor(T.key);
@@ -237,8 +243,26 @@ function render(a) {
   $("#conf").textContent = a.conf || (a.plan && a.plan.conf) || "—";
   big.classList.add("text"); unit.textContent = ""; sub.textContent = "";
   switch (a.mode) {
-    case "WAIT": setBand("Finding GPS…", "#6B7684", "#151B23"); big.textContent = "—"; break;
-    case "GPS": setBand("Weak GPS signal", "#6B7684", "#151B23"); big.textContent = "—"; sub.textContent = "No advice until GPS improves"; break;
+    case "WAIT":
+      if (S.geoError === 1) {
+        setBand("Location is blocked", "#FFB547", "rgba(255,181,71,.16)"); big.textContent = "Allow location";
+        sub.textContent = "Settings › Privacy & Security › Location Services › Safari Websites › While Using, and turn on Precise Location. Then end and restart the drive.";
+      } else if (S.geoError === 2) {
+        setBand("Location unavailable", "#FFB547", "rgba(255,181,71,.16)"); big.textContent = "No GPS";
+        sub.textContent = "Check that Location Services is on, and that you opened the https:// link.";
+      } else {
+        setBand("Finding GPS…", "#6B7684", "#151B23"); big.textContent = "—";
+        sub.textContent = S.geoError === 3 ? "Still waiting for a fix. Try near a window or outside." : "If Safari asks, tap Allow.";
+      }
+      break;
+    case "GPS":
+      setBand("Weak GPS signal", "#6B7684", "#151B23"); big.textContent = "—";
+      sub.textContent = `Accuracy ±${Math.round(S.acc)} m. ` + (S.acc > 500 ? "Turn on Precise Location for Safari Websites in Settings." : "No advice until GPS improves.");
+      break;
+    case "READY":
+      setBand("GPS ready", "#3DDC84", "rgba(61,220,132,.16)"); big.textContent = "Start driving";
+      sub.textContent = `Accuracy ±${Math.round(S.acc)} m · ${S.clusters.length} lights loaded nearby. Advice starts once you're moving.`;
+      break;
     case "NONE": setBand("No lights ahead", "#6B7684", "#151B23"); big.textContent = "—"; sub.textContent = "Drive normally"; break;
     case "LEARNING":
       setBand("Learning this light", "#6B7684", "#151B23"); big.textContent = "Drive normally";
